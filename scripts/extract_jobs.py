@@ -34,6 +34,35 @@ BOXES = {
 }
 
 
+QUAL_BOX = (292, 450, 560, 534)  # 免許・資格欄（行単位で読む）
+
+
+def qual_rows(page):
+    """免許・資格欄を1行＝1資格として読み、[(資格名, 必須/あれば尚可), ...] を返す。
+
+    欄内は「資格名」と「必須／あれば尚可」が別の列に置かれた行の並びなので、
+    行を潰さずに読むこと。行をまとめて読むと隣接資格と結合し、必須件数を取り違える。
+    """
+    rows = {}
+    for w in page.crop(QUAL_BOX).extract_words():
+        if not w["upright"] or w["x0"] < 310:   # 縦書きラベル列を除外
+            continue
+        rows.setdefault(round(w["top"] / 4), []).append(w)
+    out = []
+    for k in sorted(rows):
+        txt = "".join(w["text"] for w in sorted(rows[k], key=lambda w: w["x0"]))
+        if "必須" in txt:
+            mark = "必須"
+        elif "尚可" in txt:
+            mark = "あれば尚可"
+        else:
+            continue                            # 注記行・欄外行は捨てる
+        name = re.sub(r"[（(].*$", "", re.split(r"必須|あれば尚可", txt)[0]).strip()
+        if name:
+            out.append((name, mark))
+    return out
+
+
 def crop_text(page, box):
     """領域内の横書き語を行単位に組み直して返す。"""
     words = [w for w in page.crop(box).extract_words() if w["upright"]]
@@ -139,6 +168,9 @@ def main():
                 rec = {"出典ファイル": src, "頁": i + 1, "都道府県": prefecture(src)}
                 for key, box in BOXES.items():
                     rec[key] = crop_text(page, box)
+                qs = qual_rows(page)
+                rec["必須資格"] = "／".join(n for n, m in qs if m == "必須")
+                rec["尚可資格"] = "／".join(n for n, m in qs if m == "あれば尚可")
                 records.append(rec)
         print(f"読込 {src}: {len(records)} 件累計")
 
@@ -157,11 +189,11 @@ def main():
         lo, hi = wage_range(r["賃金"])
         r["賃金下限"], r["賃金上限"] = lo, hi
         r["未経験可"] = "不問" in r["経験"]
-        r["運転免許必須"] = bool(re.search(r"普通自動車運転免許\s*必須", undouble(r["免許資格"])))
+        r["運転免許必須"] = "普通自動車運転免許" in r["必須資格"]
 
     os.makedirs(os.path.dirname(OUT_CSV), exist_ok=True)
     cols = ["分類", "職種", "事業所名", "都道府県", "産業分類", "就業場所", "賃金下限", "賃金上限",
-            "未経験可", "運転免許必須", "経験", "免許資格", "PCスキル", "学歴",
+            "未経験可", "運転免許必須", "経験", "必須資格", "尚可資格", "免許資格", "PCスキル", "学歴",
             "仕事内容", "特記事項", "出典ファイル", "頁"]
     with open(OUT_CSV, "w", newline="", encoding="utf-8-sig") as f:
         w = csv.DictWriter(f, fieldnames=cols, extrasaction="ignore")
