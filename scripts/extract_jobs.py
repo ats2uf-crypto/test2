@@ -20,6 +20,7 @@ OUT_JSON = "analysis/data/求人一覧.json"
 
 # ハローワーク求人票（フルタイム）の固定レイアウト上の抽出領域 (x0, top, x1, bottom)
 BOXES = {
+    "産業分類": (690, 72, 841, 92),
     "事業所名": (36, 126, 292, 168),
     "就業場所": (312, 144, 560, 182),
     "職種": (40, 248, 292, 276),
@@ -48,6 +49,11 @@ def crop_text(page, box):
     if buf:
         lines.append("".join(buf))
     return " ".join(lines).strip()
+
+
+def clean_industry(s):
+    """「産業分類 065木造建築工事業」→「木造建築工事業」。"""
+    return re.sub(r"^産業分類\s*\d*\s*", "", s).strip()
 
 
 def undouble(s):
@@ -146,6 +152,7 @@ def main():
         uniq.append(r)
 
     for r in uniq:
+        r["産業分類"] = clean_industry(r["産業分類"])
         r["分類"] = classify(r)
         lo, hi = wage_range(r["賃金"])
         r["賃金下限"], r["賃金上限"] = lo, hi
@@ -153,7 +160,7 @@ def main():
         r["運転免許必須"] = bool(re.search(r"普通自動車運転免許\s*必須", undouble(r["免許資格"])))
 
     os.makedirs(os.path.dirname(OUT_CSV), exist_ok=True)
-    cols = ["分類", "職種", "事業所名", "都道府県", "就業場所", "賃金下限", "賃金上限",
+    cols = ["分類", "職種", "事業所名", "都道府県", "産業分類", "就業場所", "賃金下限", "賃金上限",
             "未経験可", "運転免許必須", "経験", "免許資格", "PCスキル", "学歴",
             "仕事内容", "特記事項", "出典ファイル", "頁"]
     with open(OUT_CSV, "w", newline="", encoding="utf-8-sig") as f:
