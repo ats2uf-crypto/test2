@@ -30,3 +30,19 @@ data/求人票/   … 求人票 PDF（13 ファイル）
 - `analysis/職種ランキングとスキル要件.md` … 職種ランキング／仕事内容／求められるスキルの整理
 - `analysis/data/求人一覧.csv`（＋ `.json`） … 求人票から抽出した全446件の構造化データ
 - `scripts/extract_jobs.py` … PDFから項目抽出・重複除去・職種分類を行う再現用スクリプト（要 `pdfplumber`）
+- `scripts/verify_report.py` … 報告書の全数値を元データから再計算して突き合わせる検証スクリプト
+
+## 報告書
+
+- `report/職業訓練カリキュラム開発_求人分析報告書.pdf` … 上司報告用（A4・5頁）
+- `report/職業訓練カリキュラム開発_求人分析報告書.docx` … 同内容のWord版
+
+いずれも `scripts/report_content.py` に定義した内容から生成する。数値を直すときはそこだけを直すこと。
+
+```
+python3 scripts/report_content.py        # 内容をJSONに書き出す
+python3 scripts/build_report_pdf.py      # PDF版
+node scripts/build_report_docx.js        # Word版（要 npm の docx）
+python3 scripts/verify_report.py         # 数値の検証
+```
+

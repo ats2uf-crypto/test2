@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
-"""上司報告用のPDF報告書を生成する。
+"""報告書PDFを生成する。内容は scripts/report_content.py に定義したものを描画するだけ。
 
 出力: report/職業訓練カリキュラム開発_求人分析報告書.pdf
 依存: reportlab, IPAゴシック（/usr/share/fonts/opentype/ipafont-gothic/）
 """
+import os
+import sys
+
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_RIGHT
 from reportlab.lib.pagesizes import A4
@@ -11,13 +14,15 @@ from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import mm
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
-from reportlab.platypus import (BaseDocTemplate, Frame, KeepTogether, PageBreak,
-                                PageTemplate, Paragraph, Spacer, Table, TableStyle)
+from reportlab.platypus import (BaseDocTemplate, Frame, PageBreak, PageTemplate,
+                                Paragraph, Spacer, Table, TableStyle)
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import report_content as RC  # noqa: E402
 
 OUT = "report/職業訓練カリキュラム開発_求人分析報告書.pdf"
 FONT_DIR = "/usr/share/fonts/opentype/ipafont-gothic/"
 pdfmetrics.registerFont(TTFont("JP", FONT_DIR + "ipagp.ttf"))
-pdfmetrics.registerFont(TTFont("JPM", FONT_DIR + "ipag.ttf"))
 pdfmetrics.registerFontFamily("JP", normal="JP", bold="JP", italic="JP", boldItalic="JP")
 
 INK = colors.HexColor("#1a1a1a")
@@ -25,8 +30,6 @@ ACCENT = colors.HexColor("#1f4e79")
 LINE = colors.HexColor("#c8d4e0")
 BAND = colors.HexColor("#eef3f8")
 MUTED = colors.HexColor("#555555")
-WARN = colors.HexColor("#8a4b08")
-
 EMPH = "#1f4e79"
 
 
@@ -51,7 +54,7 @@ S = {
     "note": ParagraphStyle("note", fontName="JP", fontSize=8.4, leading=13,
                            textColor=MUTED, spaceAfter=3),
     "warn": ParagraphStyle("warn", fontName="JP", fontSize=9.1, leading=14.5,
-                           textColor=WARN, spaceAfter=3),
+                           textColor=colors.HexColor("#8a4b08"), spaceAfter=3),
     "cell": ParagraphStyle("cell", fontName="JP", fontSize=8.2, leading=11.5, textColor=INK),
     "cellh": ParagraphStyle("cellh", fontName="JP", fontSize=8.2, leading=11.5,
                             textColor=colors.white),
@@ -59,11 +62,8 @@ S = {
     "smallh": ParagraphStyle("smallh", fontName="JP", fontSize=7.2, leading=9.8,
                              textColor=colors.white, alignment=TA_CENTER),
 }
-
-
 for _st in S.values():
     _st.wordWrap = "CJK"
-
 S["cellr"] = ParagraphStyle("cellr", parent=S["cell"], alignment=TA_RIGHT)
 S["smallr"] = ParagraphStyle("smallr", parent=S["small"], alignment=TA_RIGHT)
 
@@ -72,48 +72,55 @@ def P(t, s="body"):
     return Paragraph(emph(t), S[s])
 
 
-def UL(items, style="bullet"):
-    return [Paragraph(emph(t), S[style], bulletText="・") for t in items]
-
-
-def table(rows, widths, align_right_from=1, head=True, fs="cell", pad=4):
-    """1行目をヘッダとする表。rowsは文字列の二次元配列。"""
+def make_table(blk):
+    fs = "small" if blk.get("small") else "cell"
     hstyle = "smallh" if fs == "small" else "cellh"
     rstyle = "smallr" if fs == "small" else "cellr"
+    rf = blk.get("right_from")
     data = []
-    for i, row in enumerate(rows):
-        if i == 0 and head:
-            data.append([Paragraph(emph(c).replace("\n", "<br/>"), S[hstyle]) for c in row])
-        else:
-            cells = []
-            for j, c in enumerate(row):
-                st = rstyle if (align_right_from is not None and j >= align_right_from) else fs
-                cells.append(Paragraph(emph(c).replace("\n", "<br/>"), S[st]))
-            data.append(cells)
-    t = Table(data, colWidths=widths, repeatRows=1 if head else 0, hAlign="LEFT")
-    cmds = [
+    for i, row in enumerate(blk["rows"]):
+        cells = []
+        for j, c in enumerate(row):
+            if i == 0:
+                st = hstyle
+            elif rf is not None and j >= rf:
+                st = rstyle
+            else:
+                st = fs
+            cells.append(Paragraph(emph(c).replace("\n", "<br/>"), S[st]))
+        data.append(cells)
+    pad = 3.4 if fs == "small" else 4
+    t = Table(data, colWidths=blk["widths"], repeatRows=1, hAlign="LEFT")
+    t.setStyle(TableStyle([
         ("GRID", (0, 0), (-1, -1), 0.4, LINE),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("TOPPADDING", (0, 0), (-1, -1), pad - 1),
         ("BOTTOMPADDING", (0, 0), (-1, -1), pad - 1),
         ("LEFTPADDING", (0, 0), (-1, -1), 4),
         ("RIGHTPADDING", (0, 0), (-1, -1), 4),
-    ]
-    if head:
-        cmds += [("BACKGROUND", (0, 0), (-1, 0), ACCENT),
-                 ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, BAND])]
-    else:
-        cmds += [("ROWBACKGROUNDS", (0, 0), (-1, -1), [colors.white, BAND])]
-    t.setStyle(TableStyle(cmds))
+        ("BACKGROUND", (0, 0), (-1, 0), ACCENT),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, BAND]),
+    ]))
     return t
 
 
-def callout(title, lines):
-    """注意喚起の囲み。"""
-    inner = [Paragraph(f"<font color='#8a4b08'>{title}</font>", S["h2"])] + \
-            [Paragraph(x.replace("<b>", "<font color='#7a3b00'>").replace("</b>", "</font>"),
-                       S["warn"]) for x in lines]
-    t = Table([[inner]], colWidths=[505], hAlign="LEFT")
+def make_meta(blk):
+    data = [[Paragraph(c, S["cell"]) for c in row] for row in blk["rows"]]
+    t = Table(data, colWidths=blk["widths"], hAlign="LEFT")
+    t.setStyle(TableStyle([
+        ("GRID", (0, 0), (-1, -1), 0.4, LINE),
+        ("BACKGROUND", (0, 0), (0, -1), BAND), ("BACKGROUND", (2, 0), (2, -1), BAND),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("TOPPADDING", (0, 0), (-1, -1), 3.5), ("BOTTOMPADDING", (0, 0), (-1, -1), 3.5),
+    ]))
+    return t
+
+
+def make_callout(blk):
+    inner = [Paragraph(f"<font color='#8a4b08'>{blk['title']}</font>", S["h2"])]
+    inner += [Paragraph(x.replace("<b>", "<font color='#7a3b00'>").replace("</b>", "</font>"),
+                        S["warn"]) for x in blk["lines"]]
+    t = Table([[inner]], colWidths=[RC.W], hAlign="LEFT")
     t.setStyle(TableStyle([
         ("BOX", (0, 0), (-1, -1), 0.8, colors.HexColor("#e0b070")),
         ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#fdf6ec")),
@@ -127,7 +134,7 @@ def footer(canvas, doc):
     canvas.saveState()
     canvas.setFont("JP", 7.6)
     canvas.setFillColor(MUTED)
-    canvas.drawString(25 * mm, 12 * mm, "住宅・リフォーム業界 求人分析報告書")
+    canvas.drawString(25 * mm, 12 * mm, RC.FOOTER)
     canvas.drawRightString(A4[0] - 25 * mm, 12 * mm, f"- {doc.page} -")
     canvas.setStrokeColor(LINE)
     canvas.setLineWidth(0.4)
@@ -136,288 +143,32 @@ def footer(canvas, doc):
 
 
 def build():
+    os.makedirs("report", exist_ok=True)
     doc = BaseDocTemplate(OUT, pagesize=A4, leftMargin=25 * mm, rightMargin=25 * mm,
                           topMargin=18 * mm, bottomMargin=20 * mm,
-                          title="職業訓練カリキュラム開発に向けた求人分析報告書",
-                          author="", subject="住宅・リフォーム業界の求人票分析")
-    frame = Frame(doc.leftMargin, doc.bottomMargin, doc.width, doc.height, id="f")
-    doc.addPageTemplates([PageTemplate(id="p", frames=[frame], onPage=footer)])
-    W = doc.width  # 505pt
-    s = []
+                          title=RC.DOC_TITLE, author="", subject="住宅・リフォーム業界の求人票分析")
+    doc.addPageTemplates([PageTemplate(
+        id="p", frames=[Frame(doc.leftMargin, doc.bottomMargin, doc.width, doc.height, id="f")],
+        onPage=footer)])
 
-    # ---- 表題 ----
-    s.append(P("職業訓練カリキュラム開発に向けた求人分析報告書", "title"))
-    s.append(P("― 住宅・リフォーム業界の求人票507件の分析 ―", "sub"))
-    s.append(Spacer(1, 5))
-    meta = Table([[Paragraph("作成日", S["cell"]), Paragraph("2026年9月8日", S["cell"]),
-                   Paragraph("報告者", S["cell"]), Paragraph("", S["cell"])],
-                  [Paragraph("分析対象", S["cell"]),
-                   Paragraph("ハローワーク求人票 507件（宮崎・山梨・愛媛・鳥取・千葉）", S["cell"]),
-                   Paragraph("取得時点", S["cell"]),
-                   Paragraph("2026年8月10日／9月7日", S["cell"])]],
-                 colWidths=[52, 218, 52, W - 322], hAlign="LEFT")
-    meta.setStyle(TableStyle([
-        ("GRID", (0, 0), (-1, -1), 0.4, LINE),
-        ("BACKGROUND", (0, 0), (0, -1), BAND), ("BACKGROUND", (2, 0), (2, -1), BAND),
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("TOPPADDING", (0, 0), (-1, -1), 3.5), ("BOTTOMPADDING", (0, 0), (-1, -1), 3.5),
-    ]))
-    s.append(meta)
-
-    # ---- 0. 要旨 ----
-    s.append(P("0. 要旨", "h1"))
-    s += UL([
-        "住宅・リフォーム業界の求人379件を分析した結果、<b>求人の48%（183件）が営業職</b>に集中していた。"
-        "施工管理52件、施工技能職42件がこれに続く。",
-        "<b>資格は「必須」より「あれば尚可」が圧倒的に多く、入口要件ではない。</b>"
-        "宅建士67件・2級建築施工管理技士22件などはいずれも優遇条件であり、"
-        "訓練の主目的を難関資格の取得に置くと的を外す。",
-        "<b>業界内求人の92%が普通自動車運転免許を「必須」と明記</b>している。"
-        "訓練以前の参加要件として扱う必要がある。",
-        "未経験可の求人は業界内の45%。職種別では建材ルート営業76%・施工技能職71%・"
-        "メンテナンス65%が高く、設計21%・施工管理27%は低い。",
-        "<b>訓練との相性が最も良いのはメンテナンス・アフターサービス職</b>"
-        "（経験必須ゼロ、企業側の研修明記71%、資格の壁は運転免許のみ、月額上限中央値35万円）。"
-        "ただし求人元は9事業所と狭く、地方4県ではほぼ求人がない。",
-        "本分析にはデータ上の制約が2点ある（第2章）。カリキュラム確定の前に、"
-        "実施地域・対象職種・訓練期間の3点を決める必要がある（第7章）。",
-    ])
-
-    # ---- 1. 目的と方法 ----
-    s.append(P("1. 調査の目的と方法", "h1"))
-    s.append(P("再就職に向けた職業訓練カリキュラムを開発するにあたり、"
-               "住宅・リフォーム業界が実際に求めている職種とスキルを、求人票という一次資料から把握することを目的とした。"))
-    s.append(P("方法：ハローワーク求人票のPDF 13ファイル・507頁（1頁＝1求人）から、"
-               "職種・仕事内容・必要な経験・必要な免許資格・必要なPCスキル・賃金・産業分類を機械抽出した。"
-               "同一事業所かつ同一職種の重複掲載を除いて446件とし、職種名の規則に基づき13カテゴリに分類した。"
-               "抽出・分類の処理は再現可能なスクリプトとして保存している。"))
-
-    # ---- 2. 前提と限界 ----
-    s.append(P("2. データの前提と限界", "h1"))
-    s.append(callout("報告に先立ち、本データの制約を2点申し添えます", [
-        "① 統計調査ではなく、キーワード検索結果のスナップショットである。"
-        "件数の大小は「その職種の求人が世の中に多い」ことではなく、"
-        "「この検索条件でこれだけ拾えた」ことを示すにすぎない。",
-        "② 千葉県のみ収集条件が異なる。他4県は「住宅」「リフォーム」という語での検索で、"
-        "職種名にこれらの語を含む求人が100%だったのに対し、千葉は40%にとどまり、"
-        "大工・配管工・塗装工など語に該当しない求人が6割を占める。"
-        "<b>千葉と他4県の職種構成の差は、地域差か収集条件差か切り分けられない。</b>",
-    ]))
-    s.append(Spacer(1, 4))
-    s.append(P("上記のほか、次の点に留意が必要である。", "body"))
-    s += UL([
-        "「住宅」の語により、住宅型有料老人ホーム等の介護・看護・調理職が65件混入していた。"
-        "業界が異なるため分析対象から除外した。",
-        "同一職務が雇用区分違いで重複計上されている（例：正社員／エリア限定社員／地域限定社員）。"
-        "このため本報告では求人件数と事業所数を併記している。",
-        "スキルの集計値は「求人票にその記述があった割合」であり、実際の業務発生頻度ではない。"
-        "職種間の相対的な重みとして読むべきものである。",
-    ])
-
-    s.append(PageBreak())
-
-    # ---- 3. 職種ランキング ----
-    s.append(P("3. 職種ランキング（住宅・リフォーム業界 379件 / 178事業所）", "h1"))
-    rows = [["職種カテゴリ", "求人\n件数", "事業\n所数", "未経験\n可", "運転免許\n必須", "月額下限\n中央値", "月額上限\n中央値"]]
-    rows += [
-        ["1. 住宅・リフォーム営業（提案営業）", "183", "71", "33%", "98%", "250,000", "360,000"],
-        ["2. 施工管理・現場監督（工務）", "52", "39", "27%", "98%", "250,000", "382,700"],
-        ["3. 施工技能職（大工・内外装・基礎・足場）", "42", "32", "71%", "74%", "255,000", "355,750"],
-        ["4. 設備工事（配管・電気・住宅設備）", "22", "18", "50%", "95%", "245,000", "375,000"],
-        ["5. 建材・住宅設備の法人／ルート営業", "17", "13", "76%", "100%", "260,000", "330,000"],
-        ["5. メンテナンス・アフターサービス・点検", "17", "9", "65%", "100%", "240,000", "350,000"],
-        ["7. 設計・ＣＡＤオペレーター", "14", "11", "21%", "64%", "244,500", "425,000"],
-        ["8. 配送・ドライバー", "10", "8", "90%", "70%", "220,979", "250,000"],
-        ["9. 事務・営業事務・広報", "8", "8", "62%", "62%", "196,400", "205,264"],
-        ["10. 製造・加工（プレカット／建材）", "7", "6", "86%", "29%", "201,074", "229,000"],
-        ["10. 住宅管理・不動産事務（公営住宅等）", "7", "4", "100%", "100%", "273,000", "300,000"],
-    ]
-    s.append(table(rows, [175, 38, 38, 44, 50, 60, 60]))
-    s.append(P("賃金は求人票の月額（a＋b）の中央値。「未経験可」は「必要な経験等」欄が『不問』の割合。", "note"))
-    s.append(P("要点", "h2"))
-    s += UL([
-        "営業職が業界内の48%を占める。ただし事業所数は71社（1社あたり2.6件）で、"
-        "雇用区分違いの重複が効いている。それを割り引いても最大カテゴリであることは変わらない。",
-        "未経験可率が高いのは建材ルート営業76%・施工技能職71%・メンテナンス65%。"
-        "逆に設計21%・施工管理27%・営業33%は経験または資格の要求が強い。",
-        "設計・CADは求人件数こそ14件と少ないが、月額上限中央値42.5万円と最も高い。",
-    ])
-
-    # ---- 4. 県別比較 ----
-    s.append(P("4. 県別比較（職種構成）", "h1"))
-    rows = [["職種カテゴリ", "宮崎", "山梨", "愛媛", "鳥取", "千葉※"]]
-    rows += [
-        ["住宅・リフォーム営業", "47件 57%", "41件 62%", "41件 57%", "20件 53%", "34件 28%"],
-        ["施工管理・現場監督", "6件 7%", "5件 8%", "6件 8%", "9件 24%", "26件 21%"],
-        ["施工技能職", "3件 4%", "4件 6%", "7件 10%", "2件 5%", "26件 21%"],
-        ["設備工事", "3件 4%", "2件 3%", "4件 6%", "1件 3%", "12件 10%"],
-        ["建材・住宅設備ルート営業", "4件 5%", "1件 2%", "5件 7%", "1件 3%", "6件 5%"],
-        ["メンテナンス・アフター", "1件 1%", "3件 5%", "4件 6%", "0件 0%", "9件 7%"],
-        ["設計・ＣＡＤ", "3件 4%", "4件 6%", "1件 1%", "4件 11%", "2件 2%"],
-        ["その他（配送・事務・製造・住宅管理）", "15件 18%", "6件 9%", "4件 6%", "1件 3%", "6件 5%"],
-        ["合計", "82件", "66件", "72件", "38件", "121件"],
-    ]
-    s.append(table(rows, [155, 70, 70, 70, 70, 70]))
-    s.append(P("※千葉県は収集条件が異なるため、構成比を他県と直接比較できない（第2章参照）。"
-               "また件数の絶対値は労働市場の規模で正規化していないため、比較すべきは構成比である。", "note"))
-    s.append(P("同一条件の4県（宮崎・山梨・愛媛・鳥取）から言えること", "h2"))
-    s += UL([
-        "<b>営業職の比率は4県ともほぼ同じ（53〜62%）。</b>"
-        "地方の住宅求人が営業中心という構造は県を問わず共通しており、営業向け訓練は地域を選ばず受け皿がある。",
-        "<b>メンテナンス職は宮崎1件・鳥取0件。</b>訓練との相性は最も良い職種だが、"
-        "地方では求人がほとんど存在せず、実施地域が限られる。",
-        "鳥取の施工管理24%・設計11%、山梨の製造・加工8%はいずれも実数が1桁〜5件であり、"
-        "数社の求人で大きく振れる。カリキュラムの根拠にするには標本が小さい。",
-    ])
-    s.append(P("同一職種内での県間比較（住宅・リフォーム営業）", "h2"))
-    rows = [["県", "件数", "事業所数", "未経験可", "月額下限 中央値", "月額上限 中央値"]]
-    rows += [["宮崎", "47", "23", "13%", "227,000", "350,000"],
-             ["山梨", "41", "21", "29%", "250,000", "398,000"],
-             ["愛媛", "41", "18", "37%", "217,500", "372,600"],
-             ["鳥取", "20", "9", "30%", "211,000", "441,000"],
-             ["千葉", "34", "17", "62%", "257,500", "350,500"]]
-    s.append(table(rows, [60, 50, 60, 60, 90, 90]))
-    s.append(P("<b>宮崎の営業職は未経験可が13%と際立って低い。</b>"
-               "「経験者※」と明記した注文住宅営業が多く、宮崎で未経験者向けの営業訓練を組むと出口の求人が想定より狭い。", "body"))
-
-    # ---- 5. スキル要件 ----
-    s.append(P("5. 職種別スキル要件（上位7職種・347件）", "h1"))
-    s.append(P("上段18行は<b>「仕事内容」欄のみ</b>を集計した、その業務の記述があった求人の割合"
-               "（特記事項欄は労働条件・応募方法の欄であり、業務内容の記述ではないため除外した）。"
-               "下段3行は基準が異なり、「ＰＣスキル欄」は同欄への記載の有無、"
-               "下2行は仕事内容欄と特記事項欄の双方を対象とした企業側の姿勢の記載率である。", "note"))
-    hdr = ["業務・スキル", "営業\n183", "施工管理\n52", "施工技能\n42", "設備工事\n22",
-           "建材営業\n17", "メンテ\n17", "設計CAD\n14"]
-    rows = [hdr] + [
-        ["顧客ヒアリング・提案・打合せ", "78%", "44%", "12%", "0%", "65%", "29%", "57%"],
-        ["集客・販促（展示場／SNS／見学会）", "62%", "6%", "5%", "0%", "0%", "0%", "21%"],
-        ["プランニング・図面作成", "42%", "13%", "5%", "0%", "0%", "0%", "71%"],
-        ["資金計画・ローン・補助金", "37%", "4%", "0%", "0%", "0%", "0%", "0%"],
-        ["現地調査・建物診断", "36%", "13%", "7%", "0%", "12%", "12%", "50%"],
-        ["契約手続き・重要事項説明", "28%", "6%", "2%", "0%", "6%", "0%", "0%"],
-        ["引渡し・アフター・点検・補修", "26%", "29%", "7%", "18%", "12%", "94%", "0%"],
-        ["見積・積算", "13%", "27%", "7%", "0%", "18%", "0%", "7%"],
-        ["工程管理", "5%", "35%", "2%", "0%", "0%", "6%", "0%"],
-        ["協力業者の手配・発注", "4%", "35%", "7%", "9%", "18%", "29%", "0%"],
-        ["品質管理・検査", "1%", "23%", "0%", "0%", "0%", "47%", "0%"],
-        ["安全管理", "0%", "17%", "2%", "0%", "0%", "0%", "0%"],
-        ["原価・実行予算管理", "0%", "12%", "0%", "0%", "0%", "0%", "7%"],
-        ["書類作成・申請", "2%", "15%", "0%", "0%", "0%", "12%", "36%"],
-        ["内装仕上げ（クロス・床・建具・塗装）", "3%", "8%", "40%", "0%", "0%", "47%", "0%"],
-        ["高所・足場・屋根外壁作業", "3%", "8%", "26%", "0%", "24%", "12%", "0%"],
-        ["水回り設備の施工（UB・給排水）", "4%", "8%", "10%", "86%", "18%", "0%", "0%"],
-        ["電気工事・配線", "0%", "2%", "0%", "14%", "0%", "0%", "0%"],
-        ["【別基準】ＰＣスキル欄に記載あり", "26%", "44%", "5%", "9%", "47%", "29%", "50%"],
-        ["【別基準】未経験者歓迎・育成の明記", "39%", "25%", "62%", "45%", "65%", "71%", "21%"],
-        ["【別基準】企業側の資格取得支援の明記", "2%", "6%", "5%", "9%", "0%", "0%", "0%"],
-    ]
-    s.append(table(rows, [175, 47, 47, 47, 47, 47, 47, 48], fs="small", pad=3.4))
-    s.append(P("読み取れること", "h2"))
-    s += UL([
-        "<b>全職種に共通する業務は存在しない。</b>最も広く現れる「顧客・関係者との打合せ」でも、"
-        "設備工事0%・施工技能職12%と現場系では低い。"
-        "共通コア科目にできるのは、ほぼ全職種で必須の普通自動車運転免許とＰＣ基礎に限られる。",
-        "<b>施工管理は管理業務が広く分散する唯一の職種</b>（工程35%・協力業者の手配35%・見積27%・"
-        "品質23%・安全17%・原価12%）。習得すべき範囲が最も広い。",
-        "<b>メンテナンスは業務範囲が明快</b>（引渡し後対応94%・内装補修47%・品質検査47%）。"
-        "訓練の到達目標を設定しやすい。",
-        "<b>企業側が「未経験者を育てる」と明記しているのは技能系62%・メンテ71%・建材営業65%。</b>"
-        "一方で施工管理25%・設計21%は低い。訓練の役割が「企業の育成工数を減らす下地づくり」か"
-        "「肩代わり」かは職種で変わる。",
-        "<b>企業側の資格取得支援の明記は全職種で1割未満。</b>"
-        "資格は自力または訓練で取るものと見なされており、ここに訓練の価値がある。",
-    ])
-
-    # ---- 6. 資格要件 ----
-    s.append(P("6. 資格要件の実態と、訓練で取れる資格", "h1"))
-    rows = [["職種", "必須とされる資格（件数）", "「あれば尚可」の資格（件数）"]]
-    rows += [
-        ["住宅・リフォーム営業\n183件",
-         "普通自動車運転免許180／宅地建物取引士10／\n二級建築士9／ＦＰ技能士9",
-         "宅地建物取引士67／二級建築士17／一級建築士13／\n1・2級建築施工管理技士7／木造建築士7"],
-        ["施工管理・現場監督\n52件",
-         "普通自動車運転免許51／2級建築施工管理技士4／\n二級建築士4／一級建築士4",
-         "2級建築施工管理技士22／1級建築施工管理技士20／\n二級建築士19／一級建築士9"],
-        ["施工技能職\n42件", "普通自動車運転免許31",
-         "車両系建設機械（整地等）運転技能者4／中型自動車免許3／\n第二種電気工事士2"],
-        ["設備工事\n22件", "普通自動車運転免許21／第二種電気工事士2／\n1級管工事施工管理技士1",
-         "第二種電気工事士2／1級・2級配管技能士 各1／\n石綿作業主任者1"],
-        ["建材・住宅設備ルート営業\n17件", "普通自動車運転免許17（うち2件は入社後取得・会社負担）",
-         "福祉用具専門相談員2／フォークリフト運転技能者1"],
-        ["メンテナンス・点検\n17件", "普通自動車運転免許17／二級建築士1",
-         "二級建築士4／宅地建物取引士3／賃貸不動産経営管理士3／\n第二種電気工事士2"],
-        ["設計・ＣＡＤ\n14件", "二級建築士4／一級建築士3／普通自動車運転免許9",
-         "二級建築士8／一級建築士5／木造建築士2／\n建築ＣＡＤ検定3級1"],
-    ]
-    s.append(table(rows, [95, 195, 215], align_right_from=None, fs="small", pad=4))
-    s.append(Spacer(1, 3))
-    s.append(callout("資格に関する報告のポイント", [
-        "宅建士・建築士・施工管理技士は、そのほとんどが「あれば尚可」の優遇条件であり、入口要件ではない。"
-        "訓練の主目的を難関資格の取得に置くべきではない。",
-        "一方で<b>第二種電気工事士は短期訓練で到達可能かつ、必須・優遇の両方に登場する</b>数少ない資格である。"
-        "施工技能職の足場の組立て等特別教育・玉掛け技能講習も同様に、短期で「尚可」要件を満たせる。",
-        "<b>二級建築士は受験に指定学科の卒業または実務経験が必要で、短期の職業訓練では取得できない。</b>"
-        "施工管理技士も受験に実務経験年数を要する。これらは訓練の射程外として上申時に明示すべきである。",
-    ]))
-
-    # ---- 7. カリキュラム案 ----
-    s.append(P("7. カリキュラム設計への落とし込み（案）", "h1"))
-    s.append(P("共通コア（第1階層）", "h2"))
-    s.append(P("うち全職種で必須と言えるのは上2つ。下3つは職種により重みが異なるが、"
-               "いずれの職種でも下地として有用なため共通科目に置く。", "note"))
-    rows = [["科目", "根拠"]]
-    rows += [
-        ["普通自動車運転免許（未取得者は取得を参加要件に）", "業界内379件の92%が「必須」と明記"],
-        ["ＰＣ基礎（Word・Excel・メール・写真の取込と貼付）", "PCスキル欄記載109件のほぼ全てがこのレベル"],
-        ["顧客・関係者とのコミュニケーション、ビジネスマナー", "打合せ・対話の記述が営業78%・建材65%・設計57%。現場系は低い"],
-        ["住宅の基礎知識（工法・構造・部材・設備の名称と役割）", "全職種の商品理解・技術理解の前提"],
-        ["建築図面の読み方（意匠図の基本）", "設計71%・営業42%、施工管理でも前提"],
-    ]
-    s.append(table(rows, [245, 260], align_right_from=None, fs="small"))
-    s.append(P("職種別専門（第2階層）", "h2"))
-    rows = [["職種", "専門科目", "訓練で取得を狙える資格"]]
-    rows += [
-        ["営業", "建物診断の初歩、見積書作成、資金計画・ローン、提案資料作成", "宅建士、ＦＰ技能士3級・2級"],
-        ["施工管理", "工程表作成、積算・実行予算、品質検査、労働安全衛生、建築ＣＡＤ", "（施工管理技士は実務年数が必要）"],
-        ["施工技能", "工具・電動工具、木材加工と造作、内装仕上げ実習、墨出し",
-         "足場の組立て等特別教育、玉掛け技能講習、\n小型車両系建設機械特別教育"],
-        ["設備工事", "給排水設備、配管施工実習、住宅設備機器の取付・交換", "第二種電気工事士"],
-        ["建材営業", "建材・設備の商品知識、図面からの部材拾い、見積作成", "（資格要求はほぼなし）"],
-        ["メンテナンス", "劣化診断、簡易補修実習、点検記録・報告書、写真記録", "（資格要求は運転免許のみ）"],
-        ["設計・ＣＡＤ", "建築ＣＡＤ実習、木造在来の納まり、確認申請書類作成", "建築ＣＡＤ検定3級"],
-    ]
-    s.append(table(rows, [70, 275, 160], align_right_from=None, fs="small"))
-    s.append(P("※本カリキュラム案は求人票の要求から論理的に導いたものであり、"
-               "職業訓練の実施基準・時間数・指導体制の制約は考慮していない。実施可能性は別途検証が必要である。", "note"))
-
-    # ---- 8. 次に決めるべきこと ----
-    s.append(P("8. ご判断いただきたい事項", "h1"))
-    s.append(P("カリキュラムを確定させるには、以下4点の意思決定が必要である。いずれも現時点で未確定であり、"
-               "決定内容によってカリキュラムの構成が変わる。", "body"))
-    rows = [["論点", "選択肢と、分析から言えること"]]
-    rows += [
-        ["① 実施地域", "千葉は施工管理・技能職が厚く、地方4県は営業偏重。ただし千葉のデータは他県と"
-                    "比較可能な形になっていないため、千葉を対象とするなら同条件での再収集が先。"],
-        ["② 対象職種", "件数最大は営業（183件・どの県でも受け皿あり）。未経験可率と賃金の両立では"
-                    "メンテナンス・施工技能職・設備工事が有利だが、地方では求人が少ない。"],
-        ["③ 訓練期間", "3ヶ月・6ヶ月・1年で到達可能な資格が変わる。第二種電気工事士は短期で可能、"
-                    "二級建築士は受験資格の制約で不可。"],
-        ["④ 受講者の前提", "普通自動車運転免許の保有を前提とするか。未取得者を受け入れる場合、"
-                     "免許取得を訓練に含めるか参加要件とするかを決める必要がある。"],
-    ]
-    s.append(table(rows, [80, 425], align_right_from=None, fs="small"))
-
-    # ---- 付録 ----
-    s.append(P("付録. データと再現方法", "h1"))
-    s += UL([
-        "元データ：求人票PDF 13ファイル（507頁）。リポジトリの data/求人票/ に保存済み。",
-        "抽出結果：analysis/data/求人一覧.csv（446件・全項目）。本報告の集計はすべてここから再現できる。",
-        "処理スクリプト：scripts/extract_jobs.py（PDFからの項目抽出・重複除去・職種分類）。",
-        "詳細レポート：analysis/職種ランキングとスキル要件.md、analysis/県別比較_職種.md、"
-        "analysis/職種別スキル要件一覧.md。",
-    ])
-
-    doc.build(s)
+    story = []
+    for blk in RC.blocks():
+        t = blk["t"]
+        if t in ("title", "sub", "h1", "h2", "body", "note"):
+            story.append(P(blk["text"], t))
+        elif t == "bullets":
+            story += [Paragraph(emph(x), S["bullet"], bulletText="・") for x in blk["items"]]
+        elif t == "meta":
+            story += [Spacer(1, 5), make_meta(blk)]
+        elif t == "table":
+            story.append(make_table(blk))
+        elif t == "callout":
+            story += [make_callout(blk), Spacer(1, 4)]
+        elif t == "pagebreak":
+            story.append(PageBreak())
+        else:
+            raise ValueError(f"未知のブロック種別: {t}")
+    doc.build(story)
     print("生成:", OUT)
 
 
