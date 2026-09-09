@@ -3,7 +3,9 @@
  * 内容は scripts/report_content.py が書き出す report/report_content.json を読むだけで、
  * PDF版と同じ定義から作られる。数値を直すときは report_content.py を直すこと。
  *
- * 使い方: python3 scripts/report_content.py && node scripts/build_report_docx.js
+ * 使い方:
+ *   node scripts/build_report_docx.js [内容JSON] [出力.docx]
+ * 既定は report/report_content.json → report/職業訓練カリキュラム開発_求人分析報告書.docx
  */
 const fs = require("fs");
 const {
@@ -12,8 +14,8 @@ const {
   VerticalAlign, WidthType,
 } = require("docx");
 
-const SRC = "report/report_content.json";
-const OUT = "report/職業訓練カリキュラム開発_求人分析報告書.docx";
+const SRC = process.argv[2] || "report/report_content.json";
+const OUT = process.argv[3] || "report/職業訓練カリキュラム開発_求人分析報告書.docx";
 
 const doc_ = JSON.parse(fs.readFileSync(SRC, "utf8"));
 const BLOCKS = doc_.blocks;

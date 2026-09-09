@@ -50,20 +50,40 @@ data/求人票_2026-09-09/   … 求人票 PDF 19ファイル・476頁（2026-09
 - `analysis/職種ランキングとスキル要件.md` … 職種ランキング／仕事内容／求められるスキルの整理
 - `analysis/data/求人一覧.csv`（＋ `.json`） … 求人票から抽出した全446件の構造化データ
 - `scripts/extract_jobs.py` … PDFから項目抽出・重複除去・職種分類を行う再現用スクリプト（要 `pdfplumber`）
-- `scripts/verify_report.py` … 報告書の全数値を元データから再計算して突き合わせる検証スクリプト
+- `scripts/verify_report.py` … 報告書（2026-09-07データ版）の全数値を検証
+- `analysis/data/求人一覧_2026-09-09.csv`（＋ `.json`） … 2026-09-09取得分の構造化データ（439件）
+- `scripts/verify_report_0909.py` … 報告書（2026-09-09データ版）の全数値を検証
+
+`scripts/extract_jobs.py` は対象ディレクトリと出力名を引数で指定できる。
+
+```
+python3 scripts/extract_jobs.py data/求人票_2026-09-09 _2026-09-09
+```
+
+職種名だけでは判別できない求人（「建築技術者」「総合職」など）は、仕事内容欄から
+分類する追加経路 `classify_by_duties()` で判定する。職種名ルールが（未分類）を返した
+ときだけ呼ばれるため、既存の分類結果は変わらない（2026-09-07データでは変化0件）。
 
 ## 報告書
 
 - `report/職業訓練カリキュラム開発_求人分析報告書.pdf` … 上司報告用（A4・5頁）
 - `report/職業訓練カリキュラム開発_求人分析報告書.docx` … 同内容のWord版
 - `report/職業訓練カリキュラム開発_求人分析報告書_ver2_受領版.docx` … 上記Word版を利用者が編集したもの（受領物・生成対象外）
+- `report/職業訓練カリキュラム開発_求人分析報告書_2026-09-09データ版.docx` / `.pdf` … 2026-09-09取得データによる分析。章立てはver.2に合わせた7章構成
 
 いずれも `scripts/report_content.py` に定義した内容から生成する。数値を直すときはそこだけを直すこと。
 
 ```
-python3 scripts/report_content.py        # 内容をJSONに書き出す
-python3 scripts/build_report_pdf.py      # PDF版
-node scripts/build_report_docx.js        # Word版（要 npm の docx）
-python3 scripts/verify_report.py         # 数値の検証
+# 2026-09-07データ版
+python3 scripts/report_content.py
+python3 scripts/build_report_pdf.py
+node scripts/build_report_docx.js
+python3 scripts/verify_report.py
+
+# 2026-09-09データ版（ver.2の章立て）
+python3 scripts/report_content_0909.py
+python3 scripts/build_report_pdf.py report_content_0909 "report/職業訓練カリキュラム開発_求人分析報告書_2026-09-09データ版.pdf"
+node scripts/build_report_docx.js report/report_content_0909.json "report/職業訓練カリキュラム開発_求人分析報告書_2026-09-09データ版.docx"
+python3 scripts/verify_report_0909.py
 ```
 

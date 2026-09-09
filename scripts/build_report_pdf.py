@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
-"""報告書PDFを生成する。内容は scripts/report_content.py に定義したものを描画するだけ。
+"""報告書PDFを生成する。内容は scripts/report_content*.py に定義したものを描画するだけ。
 
-出力: report/職業訓練カリキュラム開発_求人分析報告書.pdf
+使い方:
+    python3 scripts/build_report_pdf.py [内容モジュール名] [出力.pdf]
+既定は report_content → report/職業訓練カリキュラム開発_求人分析報告書.pdf
 依存: reportlab, IPAゴシック（/usr/share/fonts/opentype/ipafont-gothic/）
 """
 import os
@@ -18,9 +20,11 @@ from reportlab.platypus import (BaseDocTemplate, Frame, PageBreak, PageTemplate,
                                 Paragraph, Spacer, Table, TableStyle)
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import report_content as RC  # noqa: E402
+import importlib  # noqa: E402
 
-OUT = "report/職業訓練カリキュラム開発_求人分析報告書.pdf"
+RC = importlib.import_module(sys.argv[1] if len(sys.argv) > 1 else "report_content")
+OUT = (sys.argv[2] if len(sys.argv) > 2
+       else "report/職業訓練カリキュラム開発_求人分析報告書.pdf")
 FONT_DIR = "/usr/share/fonts/opentype/ipafont-gothic/"
 pdfmetrics.registerFont(TTFont("JP", FONT_DIR + "ipagp.ttf"))
 pdfmetrics.registerFontFamily("JP", normal="JP", bold="JP", italic="JP", boldItalic="JP")

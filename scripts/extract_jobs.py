@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
-"""ハローワーク求人票PDF（data/求人票/*.pdf）から主要項目を抽出し、
-重複除去・職種分類を行って analysis/data/求人一覧.csv を生成する。
+"""ハローワーク求人票PDFから主要項目を抽出し、重複除去・職種分類を行ってCSV/JSONを生成する。
 
 依存: pdfplumber
-使い方: python3 scripts/extract_jobs.py
+使い方:
+    python3 scripts/extract_jobs.py                       # data/求人票 → analysis/data/求人一覧
+    python3 scripts/extract_jobs.py <PDFディレクトリ> <出力名の接尾辞>
+例:
+    python3 scripts/extract_jobs.py data/求人票_2026-09-09 _2026-09-09
 """
 import collections
 import csv
@@ -14,9 +17,12 @@ import re
 
 import pdfplumber
 
-PDF_DIR = "data/求人票"
-OUT_CSV = "analysis/data/求人一覧.csv"
-OUT_JSON = "analysis/data/求人一覧.json"
+import sys as _sys
+
+PDF_DIR = _sys.argv[1] if len(_sys.argv) > 1 else "data/求人票"
+_SUFFIX = _sys.argv[2] if len(_sys.argv) > 2 else ""
+OUT_CSV = f"analysis/data/求人一覧{_SUFFIX}.csv"
+OUT_JSON = f"analysis/data/求人一覧{_SUFFIX}.json"
 
 # ハローワーク求人票（フルタイム）の固定レイアウト上の抽出領域 (x0, top, x1, bottom)
 BOXES = {
@@ -143,6 +149,36 @@ def classify(rec):
         return "建材・住宅設備の法人／ルート営業"
     if re.search(r"営業|アドバイザー|コンシェルジュ|プランナー|コーディネーター|コンサルタント|"
                  r"販売|クライアントパートナー|エンジニア|担当|スタッフ|不動産", t):
+        return "住宅・リフォーム営業（提案営業）"
+    return classify_by_duties(rec)
+
+
+def classify_by_duties(rec):
+    """職種名だけでは判別できない求人を「仕事内容」欄から分類する。
+
+    職種名ルールが（未分類）を返したときだけ呼ばれる追加経路であり、
+    既存の分類結果を変えない。「建築技術者」「総合職」のように職種名が
+    抽象的な求人を拾うために設けた。
+    """
+    t = rec["職種"] + " " + rec["仕事内容"]
+    if re.search(r"アシスタント|事務処理|データ入力|受注対応", t) \
+            and not re.search(r"施工管理|現場監督|現場管理", t):
+        if re.search(r"リース|資材|建材", t):
+            return "建材・住宅設備の法人／ルート営業"
+        return "事務・営業事務・広報"
+    if re.search(r"施工管理|現場監督|現場管理|工事監督|監督業務|工程管理|安全管理|現場の管理", t):
+        return "施工管理・現場監督（工務）"
+    if re.search(r"点検|修繕|補修|メンテナンス|アフター", t):
+        return "メンテナンス・アフターサービス・点検"
+    if re.search(r"給湯|水廻り|水回り|配管|給排水|電気工事|設備工事|据付", t):
+        return "設備工事（配管・電気・住宅設備）"
+    if re.search(r"断熱|熱絶縁|足場|鳶|溶接|清掃|美装|軽作業|解体|塗装|内装|大工|加工", t):
+        return "施工技能職（大工・内外装・基礎・足場ほか）"
+    if re.search(r"設計|図面|間取り|プランニング", t):
+        return "設計・ＣＡＤオペレーター"
+    if re.search(r"リース|資材|建材", t):
+        return "建材・住宅設備の法人／ルート営業"
+    if re.search(r"営業|提案|接客|お客様", t):
         return "住宅・リフォーム営業（提案営業）"
     return "（未分類）"
 
